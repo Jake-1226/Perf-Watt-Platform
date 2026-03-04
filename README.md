@@ -75,7 +75,7 @@ A full-stack benchmarking and power telemetry tool for Dell servers that drives 
 ## 🚀 Quick Start
 
 ### 🖥️ Live Demo (VM Deployment)
-**Platform Interface:** http://10.244.236.154:8001/
+**Platform Interface:** http://10.244.236.154
 
 The platform is currently deployed and running on the development VM. Access the live interface to explore all features:
 - Real-time dashboard with live telemetry
@@ -116,7 +116,7 @@ curl -fsSL https://raw.githubusercontent.com/your-org/perf-platform/main/QUICK_D
 # http://<VM_IP>:8001
 ```
 
-**🖥️ Live VM Instance:** http://10.244.236.154:8001/
+**🖥️ Live VM Instance:** http://10.244.236.154
 The platform is currently deployed and running on the development VM. Access the live interface to explore all features.
 
 ### Running the Platform
@@ -292,7 +292,7 @@ curl -fsSL https://raw.githubusercontent.com/your-org/perf-platform/main/QUICK_D
 # Access at http://<VM_IP>:8001
 ```
 
-**🖥️ Live VM Instance:** http://10.244.236.154:8001/
+**🖥️ Live VM Instance:** http://10.244.236.154
 The platform is currently deployed and running on the development VM with full automation and monitoring capabilities.
 
 ### Docker Deployment
