@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/htm@3/dist/htm.umd.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+console.log('Starting debug...');
+const html = htm.bind(React.createElement);
+const { useState, useEffect } = React;
+
+function App() {
+    console.log('App component rendering');
+    const [tab, setTab] = useState('home');
+    
+    useEffect(() => {
+        console.log('App mounted, tab:', tab);
+    });
+    
+    return html`
+        <div style="background: #0f172a; color: white; padding: 20px; min-height: 100vh;">
+            <h1>Debug Page</h1>
+            <p>Current tab: ${tab}</p>
+            <button onClick=${() => setTab('home')}>Home</button>
+            <button onClick=${() => setTab('connect')}>Connect</button>
+            ${tab === 'home' ? html`<div>Home content</div>` : html`<div>Other content</div>`}
+        </div>
+    `;
+}
+
+try {
+    ReactDOM.createRoot(document.getElementById('root')).render(html`<${App} />`);
+    console.log('Rendered successfully');
+} catch (e) {
+    console.error('Render error:', e);
+    document.body.innerHTML = '<div style="color: red;">Error: ' + e.message + '</div>';
+}
+</script>
+</body>
+</html>

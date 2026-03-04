@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Test Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.13.3/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/htm@3/dist/htm.umd.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
+        .card-header { background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%); border-bottom: 1px solid #334155; padding: 14px 20px; }
+        .metric-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 10px; padding: 16px; transition: all 0.2s; }
+        .metric-card:hover { border-color: #475569; transform: translateY(-1px); }
+        .btn { padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; font-size: 14px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #2563eb; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover:not(:disabled) { background: #dc2626; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-success:hover:not(:disabled) { background: #16a34a; }
+        .btn-secondary { background: #475569; color: white; }
+        .btn-secondary:hover:not(:disabled) { background: #64748b; }
+        .btn-sm { padding: 5px 14px; font-size: 12px; }
+        .input { background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; color: #e2e8f0; width: 100%; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        .input:focus { border-color: #3b82f6; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .status-dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e55; }
+        .status-dot.red { background: #ef4444; }
+        .log-area { background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .tab-btn { padding: 10px 20px; border: none; background: transparent; color: #94a3b8; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; font-size: 14px; }
+        .tab-btn:hover { color: #e2e8f0; }
+        .tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #3b82f6; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+        .badge-green { background: #22c55e22; color: #22c55e; }
+        .badge-red { background: #ef444422; color: #ef4444; }
+        .badge-blue { background: #3b82f622; color: #3b82f6; }
+        .badge-yellow { background: #eab30822; color: #eab308; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+const html = htm.bind(React.createElement);
+const { useState, useEffect, useRef, useCallback } = React;
+
+let RC = null;
+try { RC = Recharts; } catch(e) { console.warn('Recharts not loaded'); }
+
+// Error boundary to prevent blank page crashes
+class ErrorBoundary extends React.Component {
+    constructor(props) { super(props); this.state = { error: null }; }
+    static getDerivedStateFromError(error) { return { error }; }
+    componentDidCatch(error, info) { console.error('React Error:', error, info); }
+    render() {
+        if (this.state.error) {
+            return React.createElement('div', {style:{padding:'40px',color:'#ef4444',background:'#0f172a',minHeight:'100vh'}},
+                React.createElement('h1', null, 'Something went wrong'),
+                React.createElement('pre', {style:{color:'#94a3b8',marginTop:'20px',whiteSpace:'pre-wrap'}}, String(this.state.error)),
+                React.createElement('button', {onClick:()=>this.setState({error:null}), style:{marginTop:'20px',padding:'10px 20px',background:'#3b82f6',color:'white',border:'none',borderRadius:'8px',cursor:'pointer'}}, 'Try Again')
+            );
+        }
+        return this.props.children;
+    }
+}
+
+window.onerror = (msg, src, line, col, err) => { console.error('Global error:', msg, src, line, err); };
+
+const API = '';
+const TABS = ['home','connect','sanity','config','dashboard','report'];
+const TAB_LABELS = {home:'Home',connect:'Connect',sanity:'Sanity',config:'Configure',dashboard:'Monitor',report:'Report'};
+
+function App() {
+    const [tab, setTab] = useState('home');
+    const [conn, setConn] = useState({os:false, idrac:false});
+    const [cc, setCc] = useState({os_ip:'',os_user:'dell',os_pass:'calvin',idrac_ip:'',idrac_user:'root',idrac_pass:'calvin',save_as:''});
+    const [configs, setConfigs] = useState([]);
+    const [sanity, setSanity] = useState(null);
+    const [sanityLoading, setSanityLoading] = useState(false);
+    const [testRunning, setTestRunning] = useState(false);
+    const [tc, setTc] = useState({phase_duration:30, rest_duration:10});
+    const [osTel, setOsTel] = useState([]);
+    const [pwrTel, setPwrTel] = useState([]);
+    const [logs, setLogs] = useState([]);
+    const [phase, setPhase] = useState('');
+    const [runId, setRunId] = useState('');
+    const [summary, setSummary] = useState(null);
+    const [runs, setRuns] = useState([]);
+    const [busy, setBusy] = useState('');
+    const [msg, setMsg] = useState(null);
+    const logRef = useRef(null);
+
+    const loadConfigs = () => fetch(API+'/api/configs').then(r=>r.json()).then(d=>setConfigs(d.configs||[])).catch(()=>{});
+    const loadRuns = () => fetch(API+'/api/runs').then(r=>r.json()).then(d=>setRuns(d.runs||[])).catch(()=>{});
+    const checkConn = () => fetch(API+'/api/connection_status').then(r=>r.json()).then(d=>setConn({os:d.os_connected,idrac:d.idrac_connected})).catch(()=>{});
+
+    useEffect(() => { loadConfigs(); checkConn(); }, []);
+
+    useEffect(() => {
+        if (!testRunning) return;
+        const iv = setInterval(() => {
+            fetch(API+'/api/test/status').then(r=>r.json()).then(d=>{
+                setTestRunning(d.running);
+                setPhase(d.current_phase||'');
+                if(!d.running) clearInterval(iv);
+            }).catch(()=>{});
+            fetch(API+'/api/test/logs?offset=0&limit=500').then(r=>r.json()).then(d=>setLogs(d.lines||[])).catch(()=>{});
+            fetch(API+'/api/telemetry/os?limit=120').then(r=>r.json()).then(d=>setOsTel(d.data||[])).catch(()=>{});
+            fetch(API+'/api/telemetry/power?limit=120').then(r=>r.json()).then(d=>setPwrTel(d.data||[])).catch(()=>{});
+        }, 3000);
+        return () => clearInterval(iv);
+    }, [testRunning]);
+
+    useEffect(() => { if(logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [logs]);
+
+    // WebSocket
+    useEffect(() => {
+        let ws = null;
+        const connect = () => {
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(proto + '//' + location.host + '/ws');
+            ws.onmessage = (e) => {
+                try {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'telemetry') {
+                        if (msg.os && msg.os.cpu_pct != null) setOsTel(prev => [...prev.slice(-119), {...msg.os, time: new Date().toLocaleTimeString()}]);
+                        if (msg.power && msg.power.SYS_PWR_INPUT_AC != null) setPwrTel(prev => [...prev.slice(-119), {...msg.power, time: new Date().toLocaleTimeString()}]);
+                        if (msg.phase) setPhase(msg.phase);
+                        if (msg.running !== undefined) setTestRunning(msg.running);
+                    } else if (msg.type === 'log') {
+                        setLogs(prev => [...prev, msg.line]);
+                    } else if (msg.type === 'test_complete') {
+                        setTestRunning(false);
+                    }
+                } catch(err) {}
+            };
+            ws.onclose = () => setTimeout(connect, 3000);
+        };
+        connect();
+        return () => { if(ws) ws.close(); };
+    }, []);
+
+    const showMsg = (text, type) => { setMsg({text, type}); setTimeout(()=>setMsg(null), 5000); };
+
+    const doConnect = async () => {
+        setBusy('connect');
+        try {
+            const r = await fetch(API+'/api/connect', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cc)});
+            const d = await r.json();
+            if (r.ok) {
+                const osOk = d.os && d.os.status === 'connected';
+                const idracOk = d.idrac && d.idrac.status === 'connected';
+                setConn({os: osOk, idrac: idracOk});
+                if (osOk) {
+                    loadConfigs();
+                    showMsg('Connected successfully! ' + (idracOk ? '(OS + iDRAC)' : '(OS only)'), 'success');
+                } else {
+                    showMsg('OS connection failed: ' + (d.os && d.os.error ? d.os.error : JSON.stringify(d.os)), 'error');
+                }
+            } else {
+                showMsg('Error: ' + (d.detail || JSON.stringify(d)), 'error');
+            }
+        } catch(e) { showMsg('Connection error: ' + e.message, 'error'); }
+        finally { setBusy(''); }
+    };
+
+    const doSanity = async () => {
+        setSanityLoading(true);
+        try {
+            const r = await fetch(API+'/api/sanity_check', {method:'POST'});
+            const d = await r.json();
+            setSanity(d);
+        } catch(e) { showMsg('Sanity check failed: ' + e.message, 'error'); }
+        finally { setSanityLoading(false); }
+    };
+
+    const doStart = async () => {
+        setBusy('start');
+        setLogs([]); setOsTel([]); setPwrTel([]); setSummary(null);
+        try {
+            const r = await fetch(API+'/api/test/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(tc)});
+            const d = await r.json();
+            if (r.ok) {
+                setRunId(d.run_id);
+                setTestRunning(true);
+                setTab('dashboard');
+            } else {
+                showMsg('Start failed: ' + (d.detail || JSON.stringify(d)), 'error');
+            }
+        } catch(e) { showMsg('Start error: ' + e.message, 'error'); }
+        finally { setBusy(''); }
+    };
+
+    const doStop = async () => {
+        setBusy('stop');
+        try { await fetch(API+'/api/test/stop', {method:'POST'}); setTestRunning(false); }
+        catch(e) { showMsg('Stop error: ' + e.message, 'error'); }
+        finally { setBusy(''); }
+    };
+
+    const doReport = async () => {
+        setBusy('report');
+        try {
+            const r = await fetch(API+'/api/report/generate', {method:'POST'});
+            const d = await r.json();
+            if (r.ok) { setSummary(d.summary); setTab('report'); }
+            else showMsg('Report error: ' + (d.detail || ''), 'error');
+        } catch(e) { showMsg('Report error: ' + e.message, 'error'); }
+        finally { setBusy(''); }
+    };
+
+    const doDeleteConfig = async (id) => {
+        if (!confirm('Delete this config?')) return;
+        await fetch(API+'/api/configs/'+id, {method:'DELETE'});
+        loadConfigs();
+    };
+
+    const doLoadConfig = (c) => {
+        setCc({os_ip:c.os_ip||'', os_user:c.os_user||'dell', os_pass:c.os_pass||'calvin', idrac_ip:c.idrac_ip||'', idrac_user:c.idrac_user||'root', idrac_pass:c.idrac_pass||'calvin', save_as:''});
+        setTab('connect');
+    };
+
+    const latestOs = osTel.length ? osTel[osTel.length-1] : {};
+    const latestPwr = pwrTel.length ? pwrTel[pwrTel.length-1] : {};
+
+    return html`
+    <div class="min-h-screen flex flex-col">
+      ${msg && html`<div class="fixed top-4 right-4 z-50 px-5 py-3 rounded-lg shadow-lg text-sm font-medium animate-pulse ${
+        msg.type==='success' ? 'bg-green-600 text-white' : msg.type==='error' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'
+      }" onClick=${()=>setMsg(null)}>${msg.text}</div>`}
+      <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-b border-blue-900/50 px-6 py-3">
+        <div class="flex items-center justify-between max-w-[1400px] mx-auto">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">PT</div>
+            <div>
+              <h1 class="text-lg font-bold text-white leading-tight">Performance Test Platform</h1>
+              <p class="text-blue-400 text-xs">Server Benchmarking & Power Telemetry</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-5">
+            <div class="flex items-center gap-2"><span class="status-dot ${conn.os?'green':'red'}"></span><span class="text-xs text-gray-400">OS</span></div>
+            <div class="flex items-center gap-2"><span class="status-dot ${conn.idrac?'green':'red'}"></span><span class="text-xs text-gray-400">iDRAC</span></div>
+            ${testRunning && html`<span class="badge badge-green"><span class="spinner" style=${{width:'12px',height:'12px',borderWidth:'1.5px',marginRight:'4px'}}></span>Running</span>`}
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-800/50 border-b border-gray-700 px-6">
+        <div class="max-w-[1400px] mx-auto flex">
+          ${TABS.map(t => html`<button key=${t} class="tab-btn ${tab===t?'active':''}" onClick=${()=>setTab(t)}>${TAB_LABELS[t]}</button>`)}
+        </div>
+      </div>
+
+      <div class="flex-1 p-6">
+        <div class="max-w-[1400px] mx-auto">
+          ${tab==='home' && html`<${HomePanel} configs=${configs} onLoad=${doLoadConfig} onDelete=${doDeleteConfig} onNew=${()=>setTab('connect')} runs=${runs} loadRuns=${loadRuns} />`}
+          ${tab==='connect' && html`<${ConnectPanel} cc=${cc} setCc=${setCc} doConnect=${doConnect} conn=${conn} busy=${busy} />`}
+          ${tab==='sanity' && html`<${SanityPanel} result=${sanity} doSanity=${doSanity} loading=${sanityLoading} onNext=${()=>setTab('config')} />`}
+          ${tab==='config' && html`<${ConfigPanel} tc=${tc} setTc=${setTc} doStart=${doStart} busy=${busy} conn=${conn} />`}
+          ${tab==='dashboard' && html`<${DashboardPanel} osTel=${osTel} pwrTel=${pwrTel} logs=${logs} logRef=${logRef} phase=${phase} running=${testRunning} doStop=${doStop} doReport=${doReport} busy=${busy} latestOs=${latestOs} latestPwr=${latestPwr} />`}
+          ${tab==='report' && html`<${ReportPanel} summary=${summary} runId=${runId} runs=${runs} loadRuns=${loadRuns} />`}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─── Home Panel ──────────────────────────────────────────────────────────────
+function HomePanel({configs, onLoad, onDelete, onNew, runs, loadRuns}) {
+    useEffect(()=>{ loadRuns(); },[]);
+    return html`
+    <div class="space-y-6">
+      <div class="text-center py-6">
+        <h2 class="text-3xl font-bold text-white mb-2">Welcome to Performance Test Platform</h2>
+        <p class="text-gray-400 max-w-xl mx-auto">Select a saved server configuration or create a new one.</p>
+      </div>
+      <div class="card">
+        <div class="card-header flex justify-between items-center">
+          <h3 class="font-bold">Saved Server Configurations</h3>
+          <button class="btn btn-primary btn-sm" onClick=${onNew}>+ New Server</button>
+        </div>
+        <div class="p-4">
+          ${configs.length===0 ? html`
+            <div class="text-center py-10 text-gray-500">
+              <p class="text-lg mb-2">No saved configurations yet</p>
+              <p class="text-sm">Connect to a server and save your configuration.</p>
+            </div>
+          ` : html`
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              ${configs.map(c => html`
+                <div key=${c.id} class="bg-gray-800/50 border border-gray-700 rounded-lg p-4 hover:border-blue-500 transition-colors cursor-pointer" onClick=${()=>onLoad(c)}>
+                  <div class="flex justify-between items-start mb-3">
+                    <h4 class="font-bold text-white">${c.name}</h4>
+                    <button class="text-gray-500 hover:text-red-400 text-xs" onClick=${(e)=>{e.stopPropagation();onDelete(c.id);}}>Delete</button>
+                  </div>
+                  <div class="space-y-1 text-xs text-gray-400">
+                    <div class="flex justify-between"><span>OS:</span><span class="text-gray-300 font-mono">${c.os_ip}</span></div>
+                    <div class="flex justify-between"><span>User:</span><span class="text-gray-300">${c.os_user}</span></div>
+                    ${c.idrac_ip && html`<div class="flex justify-between"><span>iDRAC:</span><span class="text-gray-300 font-mono">${c.idrac_ip}</span></div>`}
+                  </div>
+                  <div class="mt-3 pt-3 border-t border-gray-700 text-right">
+                    <span class="text-xs text-blue-400 font-medium">Connect →</span>
+                  </div>
+                </div>
+              `)}
+            </div>
+          `}
+        </div>
+      </div>
+      ${runs.length > 0 && html`
+      <div class="card">
+        <div class="card-header"><h3 class="font-bold">Recent Test Runs</h3></div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-gray-400 border-b border-gray-700">
+              <th class="p-3 text-left">Run ID</th><th class="p-3 text-left">Status</th>
+              <th class="p-3 text-left">Config</th><th class="p-3 text-right">Report</th>
+            </tr></thead>
+            <tbody>
+              ${runs.slice(0,10).map(r => html`
+                <tr key=${r.run_id} class="border-b border-gray-800 hover:bg-gray-800/50">
+                  <td class="p-3 font-mono text-xs">${r.run_id}</td>
+                  <td class="p-3"><span class="badge ${r.status==='completed'?'badge-green':r.status==='running'?'badge-blue':'badge-yellow'}">${r.status}</span></td>
+                  <td class="p-3 text-xs text-gray-400">${r.config_name||'-'}</td>
+                  <td class="p-3 text-right">${r.has_report ? html`<a href="${API}/api/report/download/${r.run_id}" class="text-blue-400 text-xs hover:underline" download>Download</a>` : html`<span class="text-gray-600 text-xs">-</span>`}</td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
+      </div>`}
+    </div>`;
+}
+
+// ─── Connect Panel ───────────────────────────────────────────────────────────
+function ConnectPanel({cc, setCc, doConnect, conn, busy}) {
+    const u = (k,v) => setCc({...cc, [k]:v});
+    return html`
+    <div class="max-w-2xl mx-auto">
+      <div class="card">
+        <div class="card-header"><h3 class="font-bold">Connect to Server</h3></div>
+        <div class="p-6 space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-400 mb-1">OS IP Address *</label>
+              <input class="input" placeholder="e.g. 100.71.148.76" value=${cc.os_ip} onInput=${e=>u('os_ip',e.target.value)} /></div>
+            <div><label class="block text-sm font-medium text-gray-400 mb-1">OS Username</label>
+              <input class="input" value=${cc.os_user} onInput=${e=>u('os_user',e.target.value)} /></div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-400 mb-1">OS Password</label>
+              <input type="password" class="input" value=${cc.os_pass} onInput=${e=>u('os_pass',e.target.value)} /></div>
+            <div><label class="block text-sm font-medium text-gray-400 mb-1">iDRAC IP (optional)</label>
+              <input class="input" placeholder="e.g. 100.71.148.195" value=${cc.idrac_ip} onInput=${e=>u('idrac_ip',e.target.value)} /></div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-400 mb-1">iDRAC Username</label>
+              <input class="input" value=${cc.idrac_user} onInput=${e=>u('idrac_user',e.target.value)} /></div>
+            <div><label class="block text-sm font-medium text-gray-400 mb-1">iDRAC Password</label>
+              <input type="password" class="input" value=${cc.idrac_pass} onInput=${e=>u('idrac_pass',e.target.value)} /></div>
+          </div>
+          <div class="border-t border-gray-700 pt-4">
+            <label class="block text-sm font-medium text-gray-400 mb-1">Save as config (optional name)</label>
+            <input class="input" placeholder="e.g. Lab Server 1" value=${cc.save_as} onInput=${e=>u('save_as',e.target.value)} />
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button class="btn btn-primary" onClick=${doConnect} disabled=${busy==='connect'||!cc.os_ip}>
+              ${busy==='connect' ? html`<span class="spinner"></span>Connecting...` : 'Connect'}
+            </button>
+            ${conn.os && html`<span class="badge badge-green mt-1">OS Connected</span>`}
+            ${conn.idrac && html`<span class="badge badge-green mt-1">iDRAC Connected</span>`}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─── Sanity Panel ────────────────────────────────────────────────────────────
+function SanityPanel({result, doSanity, loading, onNext}) {
+    useEffect(()=>{ if(!result && !loading) doSanity(); },[]);
+    const os = (result && result.os) ? result.os : {};
+    const idrac = (result && result.idrac) ? result.idrac : {};
+    const caps = (result && result.capabilities) ? result.capabilities : {};
+    return html`
+    <div class="max-w-3xl mx-auto space-y-6">
+      <div class="card">
+        <div class="card-header flex justify-between items-center">
+          <h3 class="font-bold">Sanity Check</h3>
+          <button class="btn btn-sm btn-secondary" onClick=${doSanity} disabled=${loading}>
+            ${loading ? html`<span class="spinner"></span>Checking...` : 'Re-run Check'}
+          </button>
+        </div>
+        <div class="p-6">
+          ${!result && loading ? html`<div class="text-center py-8"><span class="spinner" style=${{width:'24px',height:'24px'}}></span><p class="text-gray-400 mt-3">Running sanity checks...</p></div>`
+          : !result ? html`<div class="text-center py-8 text-gray-500">No results yet. Click Re-run Check.</div>`
+          : html`
+            <div class="space-y-4">
+              ${os.sysinfo ? html`
+              <div>
+                <h4 class="text-sm font-bold text-blue-400 mb-2 uppercase tracking-wider">OS Info</h4>
+                <div class="grid grid-cols-3 gap-3 text-xs">
+                  <div class="bg-gray-800/50 p-3 rounded"><span class="text-gray-500">Hostname:</span> <span class="text-white font-mono">${os.sysinfo.hostname}</span></div>
+                  <div class="bg-gray-800/50 p-3 rounded"><span class="text-gray-500">CPU:</span> <span class="text-white">${os.sysinfo.cpu_model}</span></div>
+                  <div class="bg-gray-800/50 p-3 rounded"><span class="text-gray-500">Cores:</span> <span class="text-white font-mono">${os.sysinfo.cpu_cores}</span></div>
+                  <div class="bg-gray-800/50 p-3 rounded"><span class="text-gray-500">RAM:</span> <span class="text-white font-mono">${os.sysinfo.memory_total_gb} GB</span></div>
+                  <div class="bg-gray-800/50 p-3 rounded"><span class="text-gray-500">Kernel:</span> <span class="text-white font-mono">${os.sysinfo.kernel}</span></div>
+                  <div class="bg-gray-800/50 p-3 rounded"><span class="text-gray-500">Uptime:</span> <span class="text-white">${os.sysinfo.uptime}</span></div>
+                </div>
+              </div>` : os.error ? html`<div class="text-red-400">OS Error: ${os.error}</div>` : null}
+
+              ${idrac.thmtest_sample ? html`
+              <div>
+                <h4 class="text-sm font-bold text-yellow-400 mb-2 uppercase tracking-wider">iDRAC Power Sample</h4>
+                <div class="grid grid-cols-5 gap-3 text-xs">
+                  ${Object.entries(idrac.thmtest_sample).map(([k,v]) => html`
+                    <div key=${k} class="bg-gray-800/50 p-3 rounded text-center">
+                      <div class="text-gray-500 text-[10px]">${k}</div>
+                      <div class="text-white font-mono font-bold">${v} W</div>
+                    </div>
+                  `)}
+                </div>
+              </div>` : null}
+
+              <div>
+                <h4 class="text-sm font-bold text-green-400 mb-2 uppercase tracking-wider">Tool Capabilities</h4>
+                <div class="flex flex-wrap gap-2">
+                  ${Object.entries(caps).map(([k,v]) => html`
+                    <span key=${k} class="badge ${v?'badge-green':'badge-red'}">${k}: ${v?'✓':'✗'}</span>
+                  `)}
+                </div>
+              </div>
+            </div>
+          `}
+        </div>
+      </div>
+      <div class="text-right">
+        <button class="btn btn-primary" onClick=${onNext}>Continue to Configure →</button>
+      </div>
+    </div>`;
+}
+
+// ─── Config Panel ────────────────────────────────────────────────────────────
+function ConfigPanel({tc, setTc, doStart, busy, conn}) {
+    const est = tc.phase_duration * 8 + 10 * 2;
+    return html`
+    <div class="max-w-2xl mx-auto space-y-6">
+      <div class="card">
+        <div class="card-header"><h3 class="font-bold">Test Configuration</h3></div>
+        <div class="p-6 space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-400 mb-1">Phase Duration (seconds)</label>
+              <input type="number" class="input" value=${tc.phase_duration} onInput=${e=>setTc({...tc, phase_duration:parseInt(e.target.value)||30})} min="10" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-400 mb-1">Rest Duration (seconds)</label>
+              <input type="number" class="input" value=${tc.rest_duration} onInput=${e=>setTc({...tc, rest_duration:parseInt(e.target.value)||10})} min="5" />
+            </div>
+          </div>
+          <div class="bg-gray-800/50 rounded-lg p-4">
+            <h4 class="font-bold text-sm text-gray-300 mb-2">Default Test Phases (8 phases)</h4>
+            <div class="grid grid-cols-2 gap-2 text-xs text-gray-400">
+              <div>1. Idle Baseline</div><div>2. HPL 100%</div>
+              <div>3. HPL 50%</div><div>4. FIO 100%</div>
+              <div>5. FIO 50%</div><div>6. HPL+FIO 100%</div>
+              <div>7. HPL+FIO 50%</div><div>8. Idle Cooldown</div>
+            </div>
+            <p class="text-xs text-gray-500 mt-3">Estimated total: ~${Math.round(est/60)} min (${est}s)</p>
+          </div>
+          <div class="pt-2">
+            <button class="btn btn-success" onClick=${doStart} disabled=${busy==='start'||!conn.os}>
+              ${busy==='start' ? html`<span class="spinner"></span>Starting...` : 'Start Test'}
+            </button>
+            ${!conn.os && html`<span class="text-red-400 text-xs ml-3">Connect to server first</span>`}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─── Dashboard Panel ─────────────────────────────────────────────────────────
+function DashboardPanel({osTel, pwrTel, logs, logRef, phase, running, doStop, doReport, busy, latestOs, latestPwr}) {
+    return html`
+    <div class="space-y-4">
+      <div class="flex justify-between items-center">
+        <div>
+          <h2 class="text-xl font-bold">Live Monitor</h2>
+          ${phase && html`<span class="badge badge-blue ml-2">${phase}</span>`}
+        </div>
+        <div class="flex gap-2">
+          ${running && html`<button class="btn btn-danger btn-sm" onClick=${doStop} disabled=${busy==='stop'}>Stop Test</button>`}
+          ${!running && html`<button class="btn btn-primary btn-sm" onClick=${doReport} disabled=${busy==='report'}>
+            ${busy==='report' ? html`<span class="spinner"></span>Generating...` : 'Generate Report'}
+          </button>`}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-6 gap-3">
+        <${MetricCard} label="CPU %" value=${latestOs.cpu_pct} unit="%" color="blue" />
+        <${MetricCard} label="Memory %" value=${latestOs.mem_pct} unit="%" color="purple" />
+        <${MetricCard} label="AC Power" value=${latestPwr.SYS_PWR_INPUT_AC} unit="W" color="yellow" />
+        <${MetricCard} label="CPU Power" value=${latestPwr.CPU_PWR_ALL} unit="W" color="red" />
+        <${MetricCard} label="Storage" value=${latestPwr.STORAGE_PWR} unit="W" color="orange" />
+        <${MetricCard} label="Fan" value=${latestPwr.FAN_PWR_MAIN} unit="W" color="green" />
+      </div>
+
+      ${RC ? html`
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-header"><h3 class="font-bold text-sm">CPU & Memory</h3></div>
+          <div class="p-3" style=${{height:'260px'}}>
+            <${RC.ResponsiveContainer} width="100%" height="100%">
+              <${RC.AreaChart} data=${osTel.slice(-60)}>
+                <${RC.CartesianGrid} strokeDasharray="3 3" stroke="#334155" />
+                <${RC.XAxis} dataKey="time" stroke="#64748b" tick=${{fontSize:10}} />
+                <${RC.YAxis} stroke="#64748b" domain=${[0,100]} />
+                <${RC.Tooltip} contentStyle=${{background:'#1e293b',border:'1px solid #334155',borderRadius:'8px'}} />
+                <${RC.Area} type="monotone" dataKey="cpu_pct" stroke="#3b82f6" fill="#3b82f633" name="CPU %" />
+                <${RC.Area} type="monotone" dataKey="mem_pct" stroke="#a855f7" fill="#a855f733" name="Mem %" />
+                <${RC.Legend} />
+              <//>
+            <//>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3 class="font-bold text-sm">Power (W)</h3></div>
+          <div class="p-3" style=${{height:'260px'}}>
+            <${RC.ResponsiveContainer} width="100%" height="100%">
+              <${RC.LineChart} data=${pwrTel.slice(-60)}>
+                <${RC.CartesianGrid} strokeDasharray="3 3" stroke="#334155" />
+                <${RC.XAxis} dataKey="time" stroke="#64748b" tick=${{fontSize:10}} />
+                <${RC.YAxis} stroke="#64748b" />
+                <${RC.Tooltip} contentStyle=${{background:'#1e293b',border:'1px solid #334155',borderRadius:'8px'}} />
+                <${RC.Line} type="monotone" dataKey="SYS_PWR_INPUT_AC" stroke="#eab308" name="AC" dot=${false} />
+                <${RC.Line} type="monotone" dataKey="CPU_PWR_ALL" stroke="#ef4444" name="CPU" dot=${false} />
+                <${RC.Line} type="monotone" dataKey="FAN_PWR_MAIN" stroke="#22c55e" name="Fan" dot=${false} />
+                <${RC.Legend} />
+              <//>
+            <//>
+          </div>
+        </div>
+      </div>
+      ` : html`
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card"><div class="card-header"><h3 class="font-bold text-sm">CPU & Memory</h3></div><div class="p-6 text-center text-gray-500">Charts loading...</div></div>
+        <div class="card"><div class="card-header"><h3 class="font-bold text-sm">Power (W)</h3></div><div class="p-6 text-center text-gray-500">Charts loading...</div></div>
+      </div>`}
+
+      <div class="card">
+        <div class="card-header"><h3 class="font-bold text-sm">Live Log</h3></div>
+        <div class="log-area" ref=${logRef}>
+          ${logs.map((l,i) => html`<div key=${i} class="py-0.5 ${l.includes && l.includes('ERROR')?'text-red-400':l.includes && l.includes('PHASE')?'text-blue-400':'text-gray-400'}">${l}</div>`)}
+          ${logs.length===0 && html`<div class="text-gray-600">Waiting for test output...</div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function MetricCard({label, value, unit, color}) {
+    const colors = {blue:'#3b82f6',purple:'#a855f7',yellow:'#eab308',red:'#ef4444',orange:'#f97316',green:'#22c55e'};
+    const c = colors[color]||'#64748b';
+    const v = value!=null ? (typeof value==='number'?value.toFixed(1):value) : '--';
+    return html`
+    <div class="metric-card text-center" style=${{borderLeft:'3px solid '+c}}>
+      <div class="text-[10px] text-gray-400 mb-1">${label}</div>
+      <div class="text-2xl font-bold" style=${{color:c}}>${v}</div>
+      <div class="text-[10px] text-gray-500">${unit}</div>
+    </div>`;
+}
+
+// ─── Report Panel ────────────────────────────────────────────────────────────
+function ReportPanel({summary, runId, runs, loadRuns}) {
+    useEffect(()=>{ loadRuns(); },[]);
+    if (!summary) return html`
+    <div class="space-y-6">
+      <div class="text-center py-12 text-gray-400">
+        <p class="text-lg mb-2">No report generated yet</p>
+        <p class="text-sm">Run a test and click "Generate Report" when it completes.</p>
+      </div>
+      ${runs.length>0 && html`
+      <div class="card">
+        <div class="card-header"><h3 class="font-bold">Past Reports</h3></div>
+        <div class="p-4 space-y-2">
+          ${runs.filter(r=>r.has_report).map(r => html`
+            <div key=${r.run_id} class="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+              <span class="font-mono text-sm">${r.run_id}</span>
+              <a href="${API}/api/report/download/${r.run_id}" class="btn btn-primary btn-sm" download>Download</a>
+            </div>
+          `)}
+        </div>
+      </div>`}
+    </div>`;
+
+    return html`
+    <div class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold">Test Report</h2>
+        ${runId && html`<a href="${API}/api/report/download/${runId}" class="btn btn-primary" download>Download Excel</a>`}
+      </div>
+      ${summary.overall ? html`
+      <div class="card p-5">
+        <h3 class="font-bold text-blue-400 mb-3 text-sm uppercase tracking-wider">Overall</h3>
+        <div class="grid grid-cols-5 gap-3">
+          <${MetricCard} label="Duration" value=${summary.overall.duration_s?(summary.overall.duration_s/60).toFixed(1):'--'} unit="min" color="blue" />
+          <${MetricCard} label="Samples" value=${summary.overall.os_samples} unit="" color="purple" />
+          <${MetricCard} label="Avg AC" value=${summary.overall.avg_ac_w} unit="W" color="yellow" />
+          <${MetricCard} label="Min AC" value=${summary.overall.min_ac_w} unit="W" color="green" />
+          <${MetricCard} label="Max AC" value=${summary.overall.max_ac_w} unit="W" color="red" />
+        </div>
+      </div>` : null}
+      ${summary.phases ? html`
+      <div class="card">
+        <div class="card-header"><h3 class="font-bold text-sm">Phase Results</h3></div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-gray-400 border-b border-gray-700">
+              <th class="p-3 text-left">Phase</th><th class="p-3 text-right">Avg CPU%</th>
+              <th class="p-3 text-right">Max CPU%</th><th class="p-3 text-right">Avg Mem%</th>
+              <th class="p-3 text-right">Avg AC(W)</th><th class="p-3 text-right">CPU(W)</th>
+            </tr></thead>
+            <tbody>
+              ${summary.phases.map(p => html`
+                <tr key=${p.name} class="border-b border-gray-800 hover:bg-gray-800/50">
+                  <td class="p-3 font-medium">${p.name}</td>
+                  <td class="p-3 text-right font-mono">${p.avg_cpu_pct!=null?p.avg_cpu_pct:'-'}</td>
+                  <td class="p-3 text-right font-mono">${p.max_cpu_pct!=null?p.max_cpu_pct:'-'}</td>
+                  <td class="p-3 text-right font-mono">${p.avg_mem_pct!=null?p.avg_mem_pct:'-'}</td>
+                  <td class="p-3 text-right font-mono font-bold">${p.avg_ac_w!=null?p.avg_ac_w:'-'}</td>
+                  <td class="p-3 text-right font-mono">${p.avg_cpu_w!=null?p.avg_cpu_w:'-'}</td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
+      </div>` : null}
+    </div>`;
+}
+
+// ─── Mount ───────────────────────────────────────────────────────────────────
+ReactDOM.createRoot(document.getElementById('root')).render(
+    React.createElement(ErrorBoundary, null, html`<${App} />`)
+);
+</script>
+</body>
+</html>
